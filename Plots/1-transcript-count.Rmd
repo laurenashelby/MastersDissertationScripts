@@ -1,0 +1,123 @@
+
+---
+title: "Pre-Processing: Read Info for Each Element of Transcript"
+author: "Ziyue Cheng"
+date: "December 9, 2024"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Add columns to the annotation
+
+```{r load annotation}
+annotation =  read.table("hg38_APPRIS_ENSEMBL109_gene_transcript_protein.tsv", header = T) %>%
+  # only the chromosome without _
+  # filter(!str_detect(chrom, "_")) %>%
+  # split comma ,
+  mutate(across(matches("(start|end|2CDS)s$"), ~ strsplit(., ","))) %>%
+  # convert to int vector
+  mutate(across(matches("(start|end|2CDS)s$"), ~ map(., as.numeric) )) %>%
+  # CDS End
+  mutate(cds_end = UTR5Length + cdsLength - 5) %>% 
+  # CDS Start
+  mutate(cds_start = UTR5Length + 1) %>% 
+  # first STST
+  mutate(stst = map_int(ststStarts, ~ .[1])) %>%
+  # first swap
+  mutate(swap = map_int(swapStarts, ~ .[1])) %>%
+  # first u9
+  mutate(u9 = map_int(u9Starts, ~ .[1])) %>% 
+  # u9 end = u9 start + 3
+  mutate(u9_end = map_int(u9Starts, ~ .[1] + 3))
+```
+
+
+## Run all elements
+
+```{r run all elements}
+output_dir = "transcript-count"
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+for (e in elements) {
+  # if this element exists
+  # get(e) makes it possible to select columns using string (e)
+  annotation_e = annotation %>% 
+    mutate(firstElement = get(e)) %>% 
+    filter(!is.na(firstElement)) %>% 
+    select(Transcript.stable.ID.version, firstElement, UTR5Sequence)
+  
+  # get normalization parameters ----
+  normalized_parameter = numeric()
+  
+  # count the number of elements at same position of different transcripts
+  distances = annotation_e %>% group_by(firstElement) %>% count
+  
+  # e.g. If length == 2, count all distance >= 2
+  for (i in 1:101) {
+    distances_current = distances %>% filter(firstElement >= i)
+    normalized_parameter[i] = sum(distances_current$n)
+  }
+  
+  normalized_parameter = sum(distances$n) / normalized_parameter
+  
+  write(normalized_parameter, paste0(output_dir, "/", e, "_norm.txt"))
+  
+  # run samples ----
+  for (s in sample_names) {
+    cat(paste0("[",e,"] ", s, " : " , now(), "\n"))
+    
+    sample = read.delim(paste0("../Pre-Processing/parse-sam-double/", s, "_with_read_info.tsv.gz")) %>% 
+      filter(!is.na(readInfo)) %>% 
+      select(Transcript.stable.ID.version, readInfo)
+    
+    sample = annotation_e %>%
+      inner_join(sample, "Transcript.stable.ID.version")
+  
+    output_file = paste0(output_dir, "/", s, "_read_to_", e, ".tsv")
+  
+    # If output file exists, remove it.
+    write(paste(c("LEN", "POS5", "POS3", "transcript"), collapse = "\t"), output_file, append = FALSE)
+    
+    # filtering out stst in u9 and u9 end 
+    if (e == "u9") {
+      sample <- sample %>% 
+        filter(!grepl("ATGATGTGA", UTR5Sequence)) %>% 
+        filter(!grepl("ATGATGTAG", UTR5Sequence)) %>% 
+        filter(!grepl("ATGATGTAA", UTR5Sequence))
+      }
+    if (e == "u9_end") {
+      sample <- sample %>% 
+        filter(!grepl("ATGATGTGA", UTR5Sequence)) %>% 
+        filter(!grepl("ATGATGTAG", UTR5Sequence)) %>% 
+        filter(!grepl("ATGATGTAA", UTR5Sequence))
+      }
+
+    for(i in 1:nrow(sample)) {
+      # get read info  length x position
+      current_read_infos = strsplit(sample$readInfo[i], ",") %>% unlist %>% strsplit("x")
+      
+      for(info in current_read_infos) {
+        # 5' of read - element
+        pos5 = as.numeric(info[2]) - sample$firstElement[i]
+        len = as.numeric(info[1])
+        pos3 = pos5 + len - 1
+        
+        # continue if not in [-100,100], skip this one
+        if (pos5 < -100 || pos5 > 100) { next }
+        
+        write(
+          paste(c(len, pos5, pos3, sample$Transcript.stable.ID.version[i]), collapse = "\t"),
+          output_file, 
+          append = T)
+      }
+    }
+  }
+}
+```
+
+

@@ -1,0 +1,142 @@
+# Prepare data for ploting
+
+---
+title: "Pre-Processing: Read Count for Each Element of Transcript"
+author: "Ziyue Cheng, Lauren Shelby"
+date: "December 9, 2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+
+if (!dir.exists("transcript-data")) dir.create("transcript-data")
+if (!dir.exists("transcript-3prime")) dir.create("transcript-3prime")
+```
+
+```{r}
+for (e in elements) {
+  normalized_parameter = scan(paste0("transcript-count/", e, "_norm.txt"), quiet = T)
+  
+  for (s in sample_names) {
+    read_count = read.delim(paste0("transcript-count/", s, "_read_to_", e, ".tsv")) %>% 
+      rename(length = LEN, distance2element = POS5, POS3=POS3)
+    
+    read_count = read_count %>%
+      count(length, distance2element, POS3) %>% 
+      rename(count = n) %>% 
+      mutate(count_normalized = map2_dbl(
+        distance2element, count,
+        # normalized_parameter[1] means at element
+        # so the parameter of -1 is normalized_parameter[2]
+        ~ ifelse(.x < 0, normalized_parameter[abs(.x) + 1] * .y, .y))
+      ) %>%
+      arrange(length, distance2element, POS3)
+    
+    read_count %>%
+      write.table(paste0("transcript-data/", s, "_read_to_", e, ".tsv"),
+                  row.names = F, quote = F, sep = "\t")
+  }
+}
+```
+
+# 3' end
+
+```{r}
+for (e in elements) {
+  normalized_parameter = scan(paste0("transcript-count/", e, "_norm.txt"), quiet = T)
+  
+  for (s in sample_names) {
+    read_count = read.delim(paste0("transcript-count/", s, "_read_to_", e, ".tsv")) %>% 
+      rename(length = LEN, distance2element = POS3)
+    
+    read_count = read_count %>%
+      count(length, distance2element) %>% 
+      rename(count = n) %>% 
+      mutate(count_normalized = map2_dbl(
+        distance2element, count,
+        # normalized_parameter[1] means at element
+        # so the parameter of -1 is normalized_parameter[2]
+        ~ ifelse(.x < 0, normalized_parameter[abs(.x) + 1] * .y, .y))
+      ) %>%
+      arrange(length, distance2element)
+    
+    read_count %>%
+      write.table(paste0("transcript-3prime/", s, "_read_to_", e, ".tsv"),
+                  row.names = F, quote = F, sep = "\t")
+  }
+}
+```
+
+# Read data from the transcript-data folder just made and put into data frame 
+```{r}
+read_data_transcript <- function(ribo_type, element) {
+  samples = switch (ribo_type,
+                    "80S" = .sample_80S,
+                    "40S" = .sample_40S)
+  
+  sample1 = read.table(paste0("transcript-data/", samples[1], "_read_to_", tolower(element), ".tsv"), header = T) %>%
+    mutate(across(3:4, ~ replace_na(., 0))) 
+  
+  sample = sample1 %>%
+    group_by(distance2element, length) %>%
+    summarise_all(sum) %>%
+    ungroup()
+  
+  return(sample)
+}
+```
+
+### Running function above to store data in data frame 
+```{r, include=FALSE}
+# 80S sample
+
+sample80_temp = read_data_transcript("80S", "stst")
+sample80_temp["type"] = "STST"
+sample80 = sample80_temp
+
+sample80_temp = read_data_transcript("80S", "CDS_start")
+sample80_temp["type"] = "CDS Start"
+sample80 = bind_rows(sample80, sample80_temp)
+
+sample80_temp = read_data_transcript("80S", "CDS_end")
+sample80_temp["type"] = "CDS Stop"
+sample80 = bind_rows(sample80, sample80_temp)
+
+# 40S sample
+
+sample40_temp = read_data_transcript("40S", "stst")
+sample40_temp["type"] = "STST"
+sample40 = sample40_temp
+
+sample40_temp = read_data_transcript("40S", "CDS_start")
+sample40_temp["type"] = "CDS Start"
+sample40 = bind_rows(sample40, sample40_temp)
+
+sample40_temp = read_data_transcript("40S", "CDS_END")
+sample40_temp["type"] = "CDS Stop"
+sample40 = bind_rows(sample40, sample40_temp)
+
+rm(sample40_temp)
+rm(sample80_temp)
+
+# Editing the data down to the regions we are plotting  
+sample80_new <- sample80 %>%
+  # filtering within the plot range
+  filter(distance2element >= -50, distance2element <= 50, length >= 15, length <= 70) %>%
+  filter(type %in% c("CDS Start", "CDS Stop", "STST")) %>%
+  group_by(type)
+
+sample40_new <- sample40 %>%
+  # filtering within the plot range
+  filter(distance2element >= -50, distance2element <= 50, length >= 15, length <= 70) %>%
+  filter(type %in% c("CDS Start", "CDS Stop", "STST")) %>%
+  group_by(type)
+```
+
+```{r}
+write.csv(sample80_new, "sample80.csv")
+write.csv(sample40_new, "sample40.csv")
+```
+

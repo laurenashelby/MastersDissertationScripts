@@ -1,0 +1,173 @@
+---
+title: "Plotting: Bohlen et al., 2020 Nature Communications WT Data"
+author: "Lauren Shelby, Ziyue Cheng"
+date: "December 9, 2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE,
+  warning = FALSE)
+library(tidyverse)
+
+source("../bohlen_NC_WT_specs.R")
+source("../plots_script.R")
+```
+
+## Getting 40s/80s count ratios
+
+```{r}
+sample80_new <- read.csv("sample80.csv")
+sample40_new <- read.csv("sample40.csv")
+```
+
+
+```{r include=FALSE}
+upper_pos80 <- find_top_range(sample80_new)[2]
+lower_pos80 <- find_top_range(sample80_new)[1]
+upper_len80 <- find_top_range(sample80_new)[4]
+lower_len80 <- find_top_range(sample80_new)[3]
+
+upper_pos40 <- find_top_range(sample40_new)[2]
+lower_pos40 <- find_top_range(sample40_new)[1]
+upper_len40 <- find_top_range(sample40_new)[4]
+lower_len40 <- find_top_range(sample40_new)[3]
+
+sample80_count <- sample80_new %>% 
+  filter(length %in% lower_len80:upper_len80) %>% 
+  filter(distance2element %in% lower_pos80:lower_pos80) %>% 
+  group_by(type) %>%
+  summarise(count_normalized_80S = sum(count_normalized), count80S = sum(count), se_normalized_80S = sd(count_normalized) / sqrt(n())) %>%  # Standard error for normalized counts
+  column_to_rownames("type")
+
+sample40_count <- sample40_new %>% 
+  filter(length %in% lower_len40:upper_len40) %>% 
+  filter(distance2element %in% lower_pos40:lower_pos40) %>% 
+  group_by(type) %>%
+  summarise(count_normalized_40S = sum(count_normalized), count40S = sum(count), se_normalized_40S = sd(count_normalized) / sqrt(n())) %>%  # Standard error for normalized counts 
+  column_to_rownames("type")
+  
+```
+
+```{r}
+#Ratio table of results 
+sample_count <- data.frame(sample80_count, sample40_count)
+sample_count$ratio_normalized <- round(sample40_count$count_normalized_40S/sample80_count$count_normalized_80S, digits = 3)
+sample_count$ratio <- round(sample40_count$count40S/sample80_count$count80S, digits = 3)
+sample_count$se_normalized <- sample_count$ratio * sqrt(
+      (sample_count$se_normalized_80S / sample_count$count_normalized_80S)^2 + 
+      (sample_count$se_normalized_40S / sample_count$count_normalized_40S)^2  # Propagate errors
+    )
+
+sample_count
+```
+
+```{r}
+# Example of chi-square test
+chisq_result <- chisq.test(table(sample_count$element, sample_count$ratio_normalized))
+print(chisq_result)
+p_value <- chisq_result$p.value
+```
+
+
+```{r}
+# Creating bar plots of ratios 
+sample_count$element <- rownames(sample_count)
+
+ggplot(data = sample_count) + 
+  geom_bar(mapping = aes(x= element, y= ratio_normalized), stat = "identity", width = 0.5, fill = "steelblue") + 
+  geom_errorbar(aes(x = element, ymin = ratio_normalized - se_normalized, ymax = ratio_normalized + se_normalized), 
+                width = 0.2, color = "black") +
+  labs(title = "Bohlen 40S/80S ratio within 'the box' for each element") +
+  ylab("40S/80S Ratio")+
+  #scale_x_discrete(labels = c("CDS Start", "CDS Stop", "STST"))+
+  annotate("text", x = 2, y = max(sample_count$ratio + sample_count$se_ratio) * 1.1, 
+           label = paste("Chi-square p-value:", signif(p_value, 3)), size = 4, hjust = 0.5)
+```
+
+## 5' end heatmaps for CDS Start, CDS End, STST 
+## Only smoothed for stst 
+### Bohlen NC filters 80S below 25 and above 48 nt 
+
+### 5' end CDS Start
+```{r }
+getRiboHeatmap("80S", "cds_start", T) 
+getRiboHeatmap("40S", "cds_start", T) 
+```
+
+# 5' end CDS End 
+```{r}
+getRiboHeatmap("80S", "cds_end", T) 
+getRiboHeatmap("40S", "cds_end", T) 
+```
+
+### 5' end STST
+```{r}
+getRiboHeatmapSmooth("80S", "stst", T) 
+getRiboHeatmapSmooth("40S", "stst", T) 
+```
+
+
+# Density Plots 
+
+```{r, include=FALSE}
+all_data_WT = data.frame()
+
+for (e in elements) {
+  normalized_parameter = scan(paste0("transcript-count/", e, "_norm.txt"), quiet = T)
+  
+  # 80S
+  temp1 = read.delim(paste0("transcript-count/", "SRR10416856", "_read_to_", e, ".tsv")) 
+  
+  temp <- temp1
+  
+  temp["element"] = e
+  temp["ribo"] = "80S"
+  
+  all_data_WT = all_data_WT %>% rbind(temp)
+  
+  # 40S
+  temp1 = read.delim(paste0("transcript-count/", "SRR11553468", "_read_to_", e, ".tsv"))
+  
+  temp <- temp1   
+  
+  temp["element"] = e
+  temp["ribo"] = "40S"
+  
+  all_data_WT = all_data_WT %>% rbind(temp)
+}
+
+all_data_WT = all_data_WT %>% 
+  mutate(element = ifelse(element == "cds_end", "CDS Stop", element)) %>% 
+  mutate(element = ifelse(element == "cds_start", "CDS Start", element)) %>% 
+  mutate(element = ifelse(element == "stst", "STST", element))
+
+rm(temp)
+```
+
+```{r}
+custom_colors <- c("#4682B4", "#87CEFA","#3CB371", "#FA8072", "#FFA07A")
+```
+
+
+```{r, warning=FALSE}
+getElementDensityOverlayPos("40S", all_data_WT, custom_colors)
+```
+
+```{r}
+getElementDensityOverlayPos("80S", all_data_WT, custom_colors)
+```
+
+```{r}
+getElementDensityOverlayLen("80S", all_data_WT, custom_colors)
+```
+
+```{r}
+getElementDensityOverlayLen("40S", all_data_WT, custom_colors)
+
+```
+
+
+
+
+
