@@ -46,7 +46,7 @@ Run scripts in the `Pre-Processing` directory sequentially to process raw riboso
 1. **Download and Quality Control**: Use `sradownload.sh` to download the raw data from NCBI GEO and run `fastqc.sh` to perform quality control checks.
 2. **Adapter Trimming**: Use `for_cutadapt.sh` to run `run_cutadapt_bioscientific.sh` for Bio-Scientific NEXTflex Small RNA-Seq Kit v3 libraries, and `run_cutadapt_takara.sh` for Takara/Clontech SMARTer smRNA-Seq libraries.
 3. **tRNA and rRNA Removal**: Use `for_xrna.sh` for `run_xrna.sh`, with indices generated from `build-xrna-index.sbatch`.
-4. **Alignment**: Build the genome index using `build-star-index.sbatch` with the human genome (`hg38.fa`) and gene annotations (`gencode.v43.chr_patch_hapl_scaff.annotation.gtf`), then use `for_star.sh` for `run_star.sh`.
+4. **Alignment**: Build the genome index using `build-star-index.sbatch` with the human genome (`hg38.fa`) and gene annotations (`gencode.v43.chr_patch_hapl_scaff.annotation.gtf`, available upon request due to file size), then use `for_star.sh` for `run_star.sh`.
 5. **Parse and Compile Data**: Use `run_parse_sam.py`, then `run_parse_all_unique.sh` and `parse_processed_txt_strand.R` to generate TSV files for analysis.
 
 ### Visualization
