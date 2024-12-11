@@ -52,7 +52,7 @@ Run scripts in the `Pre-Processing` directory sequentially to process raw riboso
 ### Visualization
 Create heatmaps and density plots using R scripts:
 - **Compile Data**: Use `1-transcript-count.Rmd` and `1.5-data-preparation.Rmd`.
-- **Generate Visualizations**: Run `DissertationPlots.R` to access `plots_script_final.R` for heatmaps and density plots.
+- **Generate Visualizations**: Run `DissertationPlots.R` to access `plots_script_final.R` and `bohlen_NC_WT_specs.R` for heatmaps and density plots.
 
 ## Data Availability
 
@@ -91,6 +91,7 @@ Plots/
 ├── plots_script_final.R
 ├── 1-transcript-count.Rmd
 ├── 1.5-data-preparation.Rmd
+├── bohlen_NC_WT_specs.R
 └── DissertationPlots.Rmd
 ```
 
